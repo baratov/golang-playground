@@ -1,5 +1,11 @@
 package store
 
+import (
+	"fmt"
+)
+
+const keyNotFoundFmt = "key '%s' not found"
+
 type Store struct {
 	items map[string]interface{}
 }
@@ -10,23 +16,35 @@ func NewStore() Store {
 	}
 }
 
-func (store Store) Get(key string) (interface{}) {
-	return store.items[key]
+func (store Store) Get(key string) (interface{}, error) {
+	value, ok := store.items[key]
+	if ok {
+		return value, nil
+	}
+	return nil, fmt.Errorf(keyNotFoundFmt, key)
 }
 
 func (store Store) Set(key string, value interface{}) {
 	store.items[key] = value
 }
 
-func (store Store) Update(key string, value interface{}) {
-	store.items[key] = value
+func (store Store) Update(key string, value interface{}) error {
+	_, err := store.Get(key)
+	if err == nil {
+		store.items[key] = value
+	}
+	return err
 }
 
-func (store Store) Delete(key string) {
-	delete(store.items, key)
+func (store Store) Delete(key string) error {
+	_, err := store.Get(key)
+	if err == nil {
+		delete(store.items, key)
+	}
+	return err
 }
 
-func (store Store) Keys() ([]string) {
+func (store Store) Keys() []string {
 	keys := make([]string, len(store.items))
 
 	i := 0
