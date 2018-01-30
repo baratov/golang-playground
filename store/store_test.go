@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"github.com/baratov/golang-playground/store"
+	"runtime"
 )
 
 func TestGet(t *testing.T) {
@@ -57,7 +58,7 @@ func TestUpdate(t *testing.T) {
 	}
 }
 
-func TestUpdate_NonExisting(t *testing.T) {
+func TestUpdate_NonExistingKey(t *testing.T) {
 	store := store.New()
 	err := store.Update("someKey", 234)
 
@@ -88,7 +89,7 @@ func TestDelete(t *testing.T) {
 	}
 }
 
-func TestDelete_NonExisting(t *testing.T) {
+func TestDelete_NonExistingKey(t *testing.T) {
 	store := store.New()
 	err := store.Delete("someKey")
 
@@ -119,5 +120,20 @@ func TestKey_EmptyStore(t *testing.T) {
 	if len(keys) != 0 {
 		actual := strings.Join(keys, ",")
 		t.Errorf("Expected array is empty, but found [%s]", actual)
+	}
+}
+
+func TestConcurrentAccess(t *testing.T) {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	t.Parallel()
+
+	store := store.New()
+
+	for i:=0; i < 1000000; i++ {
+		go store.Set("key", i)
+		go store.Get("key")
+		go store.Update("key", i)
+		go store.Delete("key")
+		go store.Keys()
 	}
 }
