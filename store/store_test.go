@@ -1,12 +1,13 @@
-package store
+package store_test
 
 import (
 	"strings"
 	"testing"
+	"github.com/baratov/golang-playground/store"
 )
 
 func TestGet(t *testing.T) {
-	store := NewStore()
+	store := store.New()
 	store.Set("someKey", 123)
 
 	val, err := store.Get("someKey")
@@ -21,7 +22,7 @@ func TestGet(t *testing.T) {
 }
 
 func TestGet_NonExistingKey(t *testing.T) {
-	store := NewStore()
+	store := store.New()
 
 	val, err := store.Get("someKey")
 
@@ -36,7 +37,7 @@ func TestGet_NonExistingKey(t *testing.T) {
 }
 
 func TestUpdate(t *testing.T) {
-	store := NewStore()
+	store := store.New()
 	store.Set("someKey", 123)
 
 	err := store.Update("someKey", 234)
@@ -57,7 +58,7 @@ func TestUpdate(t *testing.T) {
 }
 
 func TestUpdate_NonExisting(t *testing.T) {
-	store := NewStore()
+	store := store.New()
 	err := store.Update("someKey", 234)
 
 	expected := "key 'someKey' not found"
@@ -67,7 +68,7 @@ func TestUpdate_NonExisting(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	store := NewStore()
+	store := store.New()
 	store.Set("someKey", 123)
 
 	err := store.Delete("someKey")
@@ -88,7 +89,7 @@ func TestDelete(t *testing.T) {
 }
 
 func TestDelete_NonExisting(t *testing.T) {
-	store := NewStore()
+	store := store.New()
 	err := store.Delete("someKey")
 
 	expected := "key 'someKey' not found"
@@ -98,7 +99,7 @@ func TestDelete_NonExisting(t *testing.T) {
 }
 
 func TestKeys(t *testing.T) {
-	store := NewStore()
+	store := store.New()
 	store.Set("someKey", 123)
 	store.Set("otherKey", 234)
 	store.Set("someKey", 345)
@@ -112,7 +113,7 @@ func TestKeys(t *testing.T) {
 }
 
 func TestKey_EmptyStore(t *testing.T) {
-	store := NewStore()
+	store := store.New()
 
 	keys := store.Keys()
 	if len(keys) != 0 {

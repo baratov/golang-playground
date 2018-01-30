@@ -10,7 +10,7 @@ type Store struct {
 	items map[string]interface{}
 }
 
-func NewStore() Store {
+func New() Store {
 	return Store{
 		items: make(map[string]interface{}),
 	}
