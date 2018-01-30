@@ -110,3 +110,13 @@ func TestKeys(t *testing.T) {
 		t.Errorf("Expected array is [%s], but found [%s]", expected, actual)
 	}
 }
+
+func TestKey_EmptyStore(t *testing.T) {
+	store := NewStore()
+
+	keys := store.Keys()
+	if len(keys) != 0 {
+		actual := strings.Join(keys, ",")
+		t.Errorf("Expected array is empty, but found [%s]", actual)
+	}
+}
