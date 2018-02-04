@@ -4,24 +4,48 @@ import (
 	"net/http"
 	"fmt"
 	"time"
-	"log"
 )
 
-func handler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "OK")
+type middleware func(http.Handler) http.Handler
+
+func chain(h http.Handler, mw []middleware) http.Handler {
+	for _, middleware := range mw{
+		h = middleware(h)
+	}
+	return h
 }
 
-func logging(h http.Handler) http.Handler {
-	f := func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		h.ServeHTTP(w, r)
-		end := time.Now()
-		log.Printf("%s: %d", r.URL.String(), end.Sub(start).Nanoseconds())
+func handler(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintln(w, "OK")
+}
+
+func logging() middleware{
+	return func(h http.Handler) http.Handler {
+		f := func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			fmt.Fprintln(w, start)
+			defer func() {
+				end := time.Now()
+				fmt.Fprintln(w, end)
+			}()
+			h.ServeHTTP(w, r)
+		}
+		return http.HandlerFunc(f)
 	}
-	return http.HandlerFunc(f)
+}
+
+func oneMore() middleware {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request){
+			fmt.Fprintln(w, "oneMore before")
+			defer fmt.Fprintln(w, "oneMore after")
+			h.ServeHTTP(w, r)
+		})
+	}
 }
 
 func Serve() {
-	http.Handle("/", logging(http.HandlerFunc(handler)))
+	commonChain := []middleware {logging(), oneMore()}
+	http.Handle("/", chain(http.HandlerFunc(handler), commonChain))
 	http.ListenAndServe(":8080", nil)
 }
