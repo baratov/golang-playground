@@ -59,19 +59,15 @@ func (store *Store) update(key string, value interface{}) error {
 	return err
 }
 
-func (store *Store) Delete(key string) error {
+func (store *Store) Delete(key string) {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
 
-	return store.delete(key)
+	store.delete(key)
 }
 
-func (store *Store) delete(key string) error {
-	_, err := store.get(key)
-	if err == nil {
-		delete(store.items, key)
-	}
-	return err
+func (store *Store) delete(key string) {
+	delete(store.items, key)
 }
 
 func (store *Store) Keys() []string {

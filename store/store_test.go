@@ -65,10 +65,7 @@ func TestDelete(t *testing.T) {
 	store := store.New()
 	store.Set("someKey", 123)
 
-	err := store.Delete("someKey")
-	if err != nil {
-		t.Errorf("Error found %s", err.Error())
-	}
+	store.Delete("someKey")
 
 	val, err := store.Get("someKey")
 	expected := "key 'someKey' not found"
@@ -77,16 +74,6 @@ func TestDelete(t *testing.T) {
 	}
 	if val != nil {
 		t.Errorf("Expected value is nil, but found %s", val)
-	}
-}
-
-func TestDelete_NonExistingKey(t *testing.T) {
-	store := store.New()
-
-	err := store.Delete("someKey")
-	expected := "key 'someKey' not found"
-	if actual := err.Error(); actual != expected {
-		t.Errorf("Expected error is %s, but found %s", expected, actual)
 	}
 }
 
