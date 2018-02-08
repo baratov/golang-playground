@@ -1,10 +1,10 @@
 package store_test
 
 import (
-	"strings"
-	"testing"
 	"github.com/baratov/golang-playground/store"
 	"runtime"
+	"strings"
+	"testing"
 )
 
 func TestGet(t *testing.T) {
@@ -120,7 +120,7 @@ func TestConcurrentAccess(t *testing.T) {
 
 	store := store.New()
 
-	for i:=0; i < 1000000; i++ {
+	for i := 0; i < 100000; i++ {
 		go store.Set("key", i)
 		go store.Get("key")
 		go store.Update("key", i)

@@ -8,9 +8,9 @@ import (
 const keyNotFoundFmt = "key '%s' not found"
 
 type Store struct {
-	mutex sync.RWMutex // https://github.com/golang/go/wiki/MutexOrChannel
+	mutex sync.RWMutex           // https://github.com/golang/go/wiki/MutexOrChannel
 	items map[string]interface{} // sync.Map could give synchronization out of the box
-}
+} // interface{} says nothing
 
 func New() *Store {
 	return &Store{
@@ -73,7 +73,6 @@ func (store *Store) delete(key string) error {
 	}
 	return err
 }
-
 
 func (store *Store) Keys() []string {
 	store.mutex.RLock()
