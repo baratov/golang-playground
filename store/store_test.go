@@ -77,6 +77,18 @@ func TestUpdate_NonExistingKey(t *testing.T) {
 	}
 }
 
+func TestUpdate_ExpiredKey(t *testing.T) {
+	store := store.New()
+	store.Set("someKey", 123, time.Second)
+	time.Sleep(time.Second)
+
+	err := store.Update("someKey", 234, time.Second)
+	expected := "key 'someKey' not found"
+	if actual := err.Error(); actual != expected {
+		t.Errorf("Expected error is %s, but found %s", expected, actual)
+	}
+}
+
 func TestDelete(t *testing.T) {
 	store := store.New()
 	store.Set("someKey", 123, time.Second)
@@ -107,13 +119,27 @@ func TestKeys(t *testing.T) {
 	}
 }
 
-func TestKey_EmptyStore(t *testing.T) {
+func TestKeys_EmptyStore(t *testing.T) {
 	store := store.New()
 
 	keys := store.Keys()
 	if len(keys) != 0 {
 		actual := strings.Join(keys, ",")
 		t.Errorf("Expected array is empty, but found [%s]", actual)
+	}
+}
+
+func TestKeys_ExpiredKey(t *testing.T) {
+	store := store.New()
+	store.Set("someKey", 123, time.Second)
+	store.Set("otherKey", 123, 2*time.Second)
+	time.Sleep(time.Second)
+
+	keys := store.Keys()
+	expected := "otherKey"
+	if len(keys) != 1 || keys[0] != expected {
+		actual := strings.Join(keys, ",")
+		t.Errorf("Expected array is [%s], but found [%s]", expected, actual)
 	}
 }
 

@@ -98,12 +98,11 @@ func (store *Store) Keys() []string {
 }
 
 func (store *Store) keys() []string {
-	keys := make([]string, len(store.items))
-	i := 0
-	for key := range store.items {
-		keys[i] = key
-		i++ // append is probably more readable
+	keys := make([]string, 0, len(store.items))
+	for key, item := range store.items {
+		if !item.isExpired() {
+			keys = append(keys, key)
+		}
 	}
-
 	return keys
 }
