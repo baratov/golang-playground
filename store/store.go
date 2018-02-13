@@ -23,9 +23,11 @@ type Store struct {
 }
 
 func New() *Store {
-	return &Store{
+	store := &Store{
 		items: make(map[string]item),
 	}
+	go store.startExpiration()
+	return store
 }
 
 func (store *Store) Get(key string) (interface{}, error) {
@@ -105,4 +107,25 @@ func (store *Store) keys() []string {
 		}
 	}
 	return keys
+}
+
+func (store *Store) expire() {
+	store.mutex.Lock()
+	defer store.mutex.Unlock()
+
+	for key, item := range store.items {
+		if item.isExpired() {
+			delete(store.items, key)
+		}
+	}
+}
+
+func (store *Store) startExpiration() { // will not be garbage collected
+	c := time.Tick(time.Second)
+	for {
+		select {
+		case <-c:
+			store.expire()
+		}
+	}
 }
