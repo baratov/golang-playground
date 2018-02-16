@@ -12,8 +12,8 @@ func TestSet(t *testing.T) {
 	store.Set("someKey", 123, time.Second)
 
 	item := store.items["someKey"]
-	if item.value != 123 {
-		t.Errorf("Expected value is %v, but found %v", 123, item.value)
+	if item.Value != 123 {
+		t.Errorf("Expected value is %v, but found %v", 123, item.Value)
 	}
 	if l := len(store.items); l != 1 {
 		t.Errorf("Expected len of internal map is 1, but found %v", l)

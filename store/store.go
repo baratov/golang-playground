@@ -1,107 +1,119 @@
 package store
 
 import (
+	"encoding/gob"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 )
 
 const keyNotFoundFmt = "key '%s' not found"
+const filename = "c:/temp/store.dat" // have to make it os agnostic
 
 type item struct {
-	value      interface{} // interface{} says nothing
-	expiration time.Time
+	Value      interface{} // interface{} says nothing
+	Expiration time.Time
 }
 
 func (item *item) isExpired() bool {
-	return time.Now().After(item.expiration)
+	return time.Now().After(item.Expiration)
 }
 
 type Store struct {
-	mutex sync.RWMutex    // https://github.com/golang/go/wiki/MutexOrChannel
-	items map[string]item // sync.Map could give synchronization out of the box
+	mu    sync.RWMutex    // https://github.com/golang/go/wiki/MutexOrChannel
+	items map[string]item // sync.Map could give synchronization out of the box and help to avoid cache contention
 }
 
 func New() *Store {
-	store := &Store{
-		items: make(map[string]item),
+	return create(make(map[string]item))
+}
+
+func Restore() *Store {
+	return create(load())
+}
+
+func create(items map[string]item) *Store {
+	s := &Store{
+		items: items,
 	}
-	go store.startExpiration()
-	return store
+	go s.runExpiration()
+	go s.runFlushing()
+	return s
 }
 
-func (store *Store) Get(key string) (interface{}, error) {
-	store.mutex.RLock()
-	defer store.mutex.RUnlock() // gives performance overhead
+func (s *Store) Get(key string) (interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock() // gives performance overhead
 
-	return store.get(key)
+	return s.get(key)
 }
 
-func (store *Store) get(key string) (interface{}, error) {
-	i, ok := store.items[key]
+func (s *Store) get(key string) (interface{}, error) {
+	i, ok := s.items[key]
 	if ok && !i.isExpired() {
-		return i.value, nil
+		return i.Value, nil
 	}
 	return nil, fmt.Errorf(keyNotFoundFmt, key)
 }
 
-func (store *Store) Set(key string, value interface{}, ttl time.Duration) {
+func (s *Store) Set(key string, value interface{}, ttl time.Duration) {
 	i := item{
-		value:      value,
-		expiration: time.Now().Add(ttl),
+		Value:      value,
+		Expiration: time.Now().Add(ttl),
 	}
 
-	store.mutex.Lock()
-	defer store.mutex.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	store.set(key, i)
+	s.set(key, i)
 }
 
-func (store *Store) set(key string, i item) {
-	store.items[key] = i
+func (s *Store) set(key string, i item) {
+	s.items[key] = i
 }
 
-func (store *Store) Update(key string, value interface{}, ttl time.Duration) error {
+func (s *Store) Update(key string, value interface{}, ttl time.Duration) error {
 	i := item{
-		value:      value,
-		expiration: time.Now().Add(ttl),
+		Value:      value,
+		Expiration: time.Now().Add(ttl),
 	}
 
-	store.mutex.Lock()
-	defer store.mutex.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	return store.update(key, i)
+	return s.update(key, i)
 }
 
-func (store *Store) update(key string, i item) error {
-	_, err := store.get(key)
+func (s *Store) update(key string, i item) error {
+	_, err := s.get(key)
 	if err == nil {
-		store.items[key] = i
+		s.items[key] = i
 	}
 	return err
 }
 
-func (store *Store) Delete(key string) {
-	store.mutex.Lock()
-	defer store.mutex.Unlock()
+func (s *Store) Delete(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	store.delete(key)
+	s.delete(key)
 }
 
-func (store *Store) delete(key string) {
-	delete(store.items, key)
+func (s *Store) delete(key string) {
+	delete(s.items, key)
 }
 
-func (store *Store) Keys() []string {
-	store.mutex.RLock()
-	defer store.mutex.RUnlock()
+func (s *Store) Keys() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	return store.keys()
+	return s.keys()
 }
 
-func (store *Store) keys() []string {
-	keys := make([]string, 0, len(store.items))
-	for key, item := range store.items {
+func (s *Store) keys() []string {
+	keys := make([]string, 0, len(s.items))
+	for key, item := range s.items {
 		if !item.isExpired() {
 			keys = append(keys, key)
 		}
@@ -109,23 +121,68 @@ func (store *Store) keys() []string {
 	return keys
 }
 
-func (store *Store) expire() {
-	store.mutex.Lock()
-	defer store.mutex.Unlock()
+func (s *Store) expire() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	for key, item := range store.items {
+	for key, item := range s.items {
 		if item.isExpired() {
-			delete(store.items, key)
+			delete(s.items, key)
 		}
 	}
 }
 
-func (store *Store) startExpiration() { // will not be garbage collected
+func (s *Store) runExpiration() { // will not be garbage collected
 	c := time.Tick(time.Second)
 	for {
 		select {
 		case <-c:
-			store.expire()
+			s.expire()
 		}
 	}
+}
+
+func (s *Store) runFlushing() {
+	c := time.Tick(time.Second * 2)
+	for {
+		select {
+		case <-c:
+			s.flush()
+		}
+	}
+}
+
+func (s *Store) flush() {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	file, err := os.Create(filename)
+	if err != nil {
+		panic(err)
+	}
+
+	encoder := gob.NewEncoder(file)
+	err = encoder.Encode(s.items)
+	if err != nil {
+		panic(err)
+	}
+	file.Close()
+}
+
+func load() map[string]item {
+	file, err := os.Open(filename)
+	if err != nil {
+		panic(err)
+	}
+
+	decoder := gob.NewDecoder(file)
+	m := make(map[string]item)
+
+	err = decoder.Decode(&m)
+	if err != nil {
+		panic(err)
+	}
+	file.Close()
+
+	return m
 }

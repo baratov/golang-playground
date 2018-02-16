@@ -147,13 +147,28 @@ func TestConcurrentAccess(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU()) //test won't work on single-core CPU
 	t.Parallel()
 
-	store := store.New()
+	s := store.New()
 
 	for i := 0; i < 100000; i++ {
-		go store.Set("key", i, time.Second)
-		go store.Get("key")
-		go store.Update("key", i, time.Second)
-		go store.Delete("key")
-		go store.Keys()
+		go s.Set("key", i, time.Second)
+		go s.Get("key")
+		go s.Update("key", i, time.Second)
+		go s.Delete("key")
+		go s.Keys()
+	}
+}
+
+func TestPersistence(t *testing.T) {
+	s := store.New()
+	s.Set("someKey", 123, time.Minute)
+	time.Sleep(time.Second * 3)
+
+	restored := store.Restore()
+	val, err := restored.Get("someKey")
+	if err != nil {
+		t.Errorf("Error found %s", err.Error())
+	}
+	if val != 123 {
+		t.Errorf("Expected value is 123, but found %s", val)
 	}
 }
