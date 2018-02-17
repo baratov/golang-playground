@@ -9,10 +9,10 @@ import (
 )
 
 const keyNotFoundFmt = "key '%s' not found"
-const filename = "c:/temp/store.dat" // have to make it os agnostic
+const filename = "./store.gob"
 
 type item struct {
-	Value      interface{} // interface{} says nothing
+	Value      interface{} // interface{} says nothing?
 	Expiration time.Time
 }
 
@@ -21,8 +21,9 @@ func (item *item) isExpired() bool {
 }
 
 type Store struct {
-	mu    sync.RWMutex    // https://github.com/golang/go/wiki/MutexOrChannel
-	items map[string]item // sync.Map could give synchronization out of the box and help to avoid cache contention
+	mu      sync.RWMutex    // https://github.com/golang/go/wiki/MutexOrChannel
+	items   map[string]item // sync.Map could give synchronization out of the box and help to avoid cache contention
+	updates chan bool
 }
 
 func New() *Store {
@@ -36,6 +37,7 @@ func Restore() *Store {
 func create(items map[string]item) *Store {
 	s := &Store{
 		items: items,
+		updates: make(chan bool),
 	}
 	go s.runExpiration()
 	go s.runFlushing()
@@ -64,9 +66,10 @@ func (s *Store) Set(key string, value interface{}, ttl time.Duration) {
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	s.set(key, i)
+	s.mu.Unlock()
+
+	s.updates <- true
 }
 
 func (s *Store) set(key string, i item) {
@@ -80,9 +83,12 @@ func (s *Store) Update(key string, value interface{}, ttl time.Duration) error {
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	err := s.update(key, i)
+	s.mu.Unlock()
 
-	return s.update(key, i)
+	s.updates <- true
+
+	return err
 }
 
 func (s *Store) update(key string, i item) error {
@@ -95,9 +101,10 @@ func (s *Store) update(key string, i item) error {
 
 func (s *Store) Delete(key string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	s.delete(key)
+	s.mu.Unlock()
+
+	s.updates <- true
 }
 
 func (s *Store) delete(key string) {
@@ -121,6 +128,16 @@ func (s *Store) keys() []string {
 	return keys
 }
 
+func (s *Store) runExpiration() { // will not be garbage collected
+	c := time.Tick(time.Second)
+	for {
+		select {
+		case <-c:
+			s.expire()
+		}
+	}
+}
+
 func (s *Store) expire() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -132,22 +149,26 @@ func (s *Store) expire() {
 	}
 }
 
-func (s *Store) runExpiration() { // will not be garbage collected
-	c := time.Tick(time.Second)
-	for {
-		select {
-		case <-c:
-			s.expire()
-		}
-	}
-}
-
+// calls store.flush every 2 seconds or after 5 updates
 func (s *Store) runFlushing() {
-	c := time.Tick(time.Second * 2)
+	flushingInterval := time.Hour * 2
+	timer := time.NewTimer(flushingInterval)
+	flushingCount := 5
+	counter := 0
+
 	for {
 		select {
-		case <-c:
+		case <-timer.C:
 			s.flush()
+			timer.Reset(flushingInterval)
+			counter = 0
+		case <-s.updates:
+			counter++
+			if counter >= flushingCount {
+				s.flush()
+				timer.Reset(flushingInterval)
+				counter = 0
+			}
 		}
 	}
 }
@@ -160,13 +181,13 @@ func (s *Store) flush() {
 	if err != nil {
 		panic(err)
 	}
+	defer file.Close()
 
 	encoder := gob.NewEncoder(file)
 	err = encoder.Encode(s.items)
 	if err != nil {
 		panic(err)
 	}
-	file.Close()
 }
 
 func load() map[string]item {
@@ -174,6 +195,7 @@ func load() map[string]item {
 	if err != nil {
 		panic(err)
 	}
+	defer file.Close()
 
 	decoder := gob.NewDecoder(file)
 	m := make(map[string]item)
@@ -182,7 +204,5 @@ func load() map[string]item {
 	if err != nil {
 		panic(err)
 	}
-	file.Close()
-
 	return m
 }

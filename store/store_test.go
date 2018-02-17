@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"os"
 )
 
 func TestGet(t *testing.T) {
@@ -158,17 +159,52 @@ func TestConcurrentAccess(t *testing.T) {
 	}
 }
 
-func TestPersistence(t *testing.T) {
+func TestFlushingByTimer(t *testing.T) {
 	s := store.New()
 	s.Set("someKey", 123, time.Minute)
-	time.Sleep(time.Second * 3)
+	time.Sleep(time.Second * 3) // magic number to not overlap restore with flushing
 
-	restored := store.Restore()
-	val, err := restored.Get("someKey")
+	r := store.Restore()
+	val, err := r.Get("someKey")
 	if err != nil {
 		t.Errorf("Error found %s", err.Error())
 	}
 	if val != 123 {
 		t.Errorf("Expected value is 123, but found %s", val)
+	}
+}
+
+func TestFlushingByUpdatesCount(t *testing.T) {
+	// remove store file if exists
+	if _, err := os.Stat("./store.gob"); err == nil {
+		if err := os.Remove("./store.gob"); err != nil {
+			t.Error(err.Error())
+		}
+	}
+
+	s := store.New()
+	s.Set("key1", 1, time.Hour)
+	s.Set("key2", 2, time.Hour)
+	s.Set("key3", 3, time.Hour)
+	s.Update("key1", 4, time.Hour)
+	s.Delete("key2")
+	time.Sleep(time.Second)
+
+	// DRY!!!
+	r := store.Restore()
+	val, err := r.Get("key1")
+	if err != nil {
+		t.Errorf("Error found %s", err.Error())
+	}
+	if val != 4 {
+		t.Errorf("Expected value is 4, but found %s", val)
+	}
+
+	val, err = r.Get("key3")
+	if err != nil {
+		t.Errorf("Error found %s", err.Error())
+	}
+	if val != 3 {
+		t.Errorf("Expected value is 3, but found %s", val)
 	}
 }
