@@ -8,8 +8,14 @@ import (
 	"time"
 )
 
-const keyNotFoundFmt = "key '%s' not found"
-const filename = "./store.gob"
+const (
+	errKeyNotFoundFmt = "key '%s' not found"
+
+	defFilename = "./store.gob"
+	defExpInterval   = time.Second
+	defFlushInterval = time.Second * 2
+	defFlushCount    = 5
+)
 
 type item struct {
 	Value      interface{} // interface{} says nothing?
@@ -20,28 +26,57 @@ func (item *item) isExpired() bool {
 	return time.Now().After(item.Expiration)
 }
 
+type setting func(*Store)
+
 type Store struct {
-	mu      sync.RWMutex    // https://github.com/golang/go/wiki/MutexOrChannel
-	items   map[string]item // sync.Map could give synchronization out of the box and help to avoid cache contention
-	updates chan bool
+	mu                 sync.RWMutex    // https://github.com/golang/go/wiki/MutexOrChannel
+	items              map[string]item // sync.Map could give synchronization out of the box and help to avoid cache contention
+	updates            chan bool
+	stop               chan bool
+	expirationInterval time.Duration
+	flushingInterval   time.Duration
+	flushingCount      int
+	wg                 sync.WaitGroup
+	filename           string
 }
 
-func New() *Store {
-	return create(make(map[string]item))
-}
-
-func Restore() *Store {
-	return create(load())
-}
-
-func create(items map[string]item) *Store {
+func New(settings ...setting) *Store {
 	s := &Store{
-		items: items,
-		updates: make(chan bool),
+		items:              make(map[string]item),
+		updates:            make(chan bool, 5),
+		stop:               make(chan bool),
+		filename:           defFilename,
+		expirationInterval: defExpInterval,
+		flushingInterval:   defFlushInterval,
+		flushingCount:      defFlushCount,
 	}
-	go s.runExpiration()
+
+	for _, setting := range settings {
+		setting(s)
+	}
+
+	s.wg.Add(1)
 	go s.runFlushing()
+	go s.runExpiration()
 	return s
+}
+
+func WithFilename(filename string) setting {
+	return func(s *Store) {
+		s.filename = filename
+	}
+}
+
+func WithRestoreFromFile(filename string) setting {
+	return func(s *Store) {
+		s.items = load(filename)
+	}
+}
+
+func (s *Store) Stop() {
+	s.stop <- true
+	s.stop <- true // looks strange
+	s.wg.Wait()
 }
 
 func (s *Store) Get(key string) (interface{}, error) {
@@ -56,7 +91,7 @@ func (s *Store) get(key string) (interface{}, error) {
 	if ok && !i.isExpired() {
 		return i.Value, nil
 	}
-	return nil, fmt.Errorf(keyNotFoundFmt, key)
+	return nil, fmt.Errorf(errKeyNotFoundFmt, key)
 }
 
 func (s *Store) Set(key string, value interface{}, ttl time.Duration) {
@@ -128,12 +163,14 @@ func (s *Store) keys() []string {
 	return keys
 }
 
-func (s *Store) runExpiration() { // will not be garbage collected
-	c := time.Tick(time.Second)
+func (s *Store) runExpiration() {
+	c := time.Tick(s.expirationInterval)
 	for {
 		select {
 		case <-c:
 			s.expire()
+		case <-s.stop:
+			return
 		}
 	}
 }
@@ -149,26 +186,31 @@ func (s *Store) expire() {
 	}
 }
 
-// calls store.flush every 2 seconds or after 5 updates
+// calls store.flush by timer or after number of updates updates
 func (s *Store) runFlushing() {
-	flushingInterval := time.Hour * 2
-	timer := time.NewTimer(flushingInterval)
-	flushingCount := 5
+	defer s.wg.Done()
+
+	timer := time.NewTimer(s.flushingInterval) // do I need defer timer.Stop() here?
 	counter := 0
+
+	flushAndReset := func() {
+		s.flush()
+		timer.Reset(s.flushingInterval)
+		counter = 0
+	}
 
 	for {
 		select {
 		case <-timer.C:
-			s.flush()
-			timer.Reset(flushingInterval)
-			counter = 0
+			flushAndReset()
 		case <-s.updates:
 			counter++
-			if counter >= flushingCount {
-				s.flush()
-				timer.Reset(flushingInterval)
-				counter = 0
+			if counter >= s.flushingCount {
+				flushAndReset()
 			}
+		case <-s.stop:
+			flushAndReset()
+			return
 		}
 	}
 }
@@ -177,7 +219,7 @@ func (s *Store) flush() {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	file, err := os.Create(filename)
+	file, err := os.Create(s.filename)
 	if err != nil {
 		panic(err)
 	}
@@ -190,7 +232,7 @@ func (s *Store) flush() {
 	}
 }
 
-func load() map[string]item {
+func load(filename string) map[string]item {
 	file, err := os.Open(filename)
 	if err != nil {
 		panic(err)

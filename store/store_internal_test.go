@@ -20,7 +20,7 @@ func TestSet(t *testing.T) {
 	}
 }
 
-func TestStoreDeletesExpiredItems(t *testing.T) {
+func TestExpirationRemovesExpiredItems(t *testing.T) {
 	store := New()
 	store.Set("someKey", 123, time.Second)
 	time.Sleep(time.Second * 2)
