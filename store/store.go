@@ -4,14 +4,16 @@ import (
 	"encoding/gob"
 	"fmt"
 	"os"
+	"reflect"
 	"sync"
 	"time"
 )
 
 const (
-	errKeyNotFoundFmt = "key '%s' not found"
+	errKeyNotFoundFmt = "key '%v' not found"
+	errWrongTypeFmt   = "wrong type for key '%v'"
 
-	defFilename = "./store.gob"
+	defFilename      = "./store.gob"
 	defExpInterval   = time.Second
 	defFlushInterval = time.Second * 2
 	defFlushCount    = 5
@@ -61,7 +63,7 @@ func New(settings ...setting) *Store {
 	return s
 }
 
-func WithFilename(filename string) setting {
+func WithCustomFilename(filename string) setting {
 	return func(s *Store) {
 		s.filename = filename
 	}
@@ -161,6 +163,90 @@ func (s *Store) keys() []string {
 		}
 	}
 	return keys
+}
+
+func (s *Store) GetMapEntry(key, innerKey string) (interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.getMapEntry(key, innerKey)
+}
+
+// option 1 - simple and stupid
+/*func (s *Store) getMapEntry(key, innerKey string) (interface{}, error) {
+	val, err := s.get(key)
+	if err != nil {
+		return nil, err
+	}
+
+	var result interface{}
+	var ok bool
+
+	switch val.(type) {
+	case map[string]bool:
+		result, ok = val.(map[string]bool)[innerKey]
+	case map[string]string:
+		result, ok = val.(map[string]string)[innerKey]
+	case map[string]int32:
+		result, ok = val.(map[string]int32)[innerKey]
+	case map[string]int64:
+		result, ok = val.(map[string]int64)[innerKey]
+	case map[string]float32:
+		result, ok = val.(map[string]float32)[innerKey]
+	case map[string]float64:
+		result, ok = val.(map[string]float64)[innerKey]
+	default:
+		return nil, fmt.Errorf(errWrongTypeFmt, key)
+	}
+
+	if !ok {
+		return nil, fmt.Errorf(errKeyNotFoundFmt, innerKey)
+	}
+
+	return result, nil
+}*/
+
+// option 2 - O(N)
+/*func (s *Store) getMapEntry(key, innerKey string) (interface{}, error) {
+	val, err := s.get(key)
+	if err != nil {
+		return nil, err
+	}
+
+	m := reflect.ValueOf(val)
+	if m.Kind() == reflect.Map {
+		for _, key := range m.MapKeys() {
+			if key.Interface() == innerKey {
+				return m.MapIndex(key).Interface(), nil
+			}
+		}
+		return nil, fmt.Errorf(errKeyNotFoundFmt, innerKey)
+	} else {
+		return nil, fmt.Errorf(errWrongTypeFmt, key)
+	}
+}*/
+
+// option 3
+func (s *Store) getMapEntry(key, innerKey string) (result interface{}, err error) {
+	val, err := s.get(key)
+	if err != nil {
+		return nil, err
+	}
+
+	// deferred recover works only with naked return?
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf(errKeyNotFoundFmt, innerKey)
+		}
+	}()
+
+	m := reflect.ValueOf(val)
+	if m.Kind() == reflect.Map {
+		result = m.MapIndex(reflect.ValueOf(innerKey)).Interface()
+	} else {
+		err = fmt.Errorf(errWrongTypeFmt, key)
+	}
+	return
 }
 
 func (s *Store) runExpiration() {

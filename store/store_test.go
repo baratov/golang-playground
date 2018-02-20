@@ -1,13 +1,13 @@
 package store_test
 
 import (
+	"fmt"
 	"github.com/baratov/golang-playground/store"
 	"os"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
-	"fmt"
 )
 
 func TestGet(t *testing.T) {
@@ -145,6 +145,67 @@ func TestKeys_ExpiredKey(t *testing.T) {
 	}
 }
 
+func TestGetMapEntry(t *testing.T) {
+	s := store.New()
+	val := make(map[string]string)
+	val["innerKey"] = "test_value"
+	s.Set("outerKey", val, time.Second)
+
+	entry, err := s.GetMapEntry("outerKey", "innerKey")
+	if err != nil {
+		t.Errorf("Error found %s", err.Error())
+	}
+	if entry != "test_value" {
+		t.Errorf("Expected value is %s, but found %s", "test_value", entry)
+	}
+}
+
+func TestGetMapEntry_NonExistingKey(t *testing.T) {
+	s := store.New()
+	val := make(map[string]interface{})
+	val["innerKey"] = "test_value"
+	s.Set("outerKey", val, time.Second)
+
+	entry, err := s.GetMapEntry("nonExisting", "innerKey")
+	expected := "key 'nonExisting' not found"
+	if actual := err.Error(); actual != expected {
+		t.Errorf("Expected error is %s, but found %s", expected, actual)
+	}
+	if entry != nil {
+		t.Errorf("Expected value is nil, but found %s", val)
+	}
+}
+
+func TestGetMapEntry_WrongType(t *testing.T) {
+	s := store.New()
+	s.Set("outerKey", 123, time.Second)
+
+	entry, err := s.GetMapEntry("outerKey", "innerKey")
+	expected := "wrong type for key 'outerKey'"
+	if actual := err.Error(); actual != expected {
+		t.Errorf("Expected error is %s, but found %s", expected, actual)
+	}
+	if entry != nil {
+		t.Errorf("Expected value is nil, but found %s", entry)
+	}
+}
+
+func TestGetMapEntry_NonExistingInnerKey(t *testing.T) {
+	s := store.New()
+	val := make(map[string]string)
+	val["innerKey"] = "test_value"
+	s.Set("outerKey", val, time.Second)
+
+	entry, err := s.GetMapEntry("outerKey", "nonExisting")
+	expected := "key 'nonExisting' not found"
+	if actual := err.Error(); actual != expected {
+		t.Errorf("Expected error is %s, but found %s", expected, actual)
+	}
+	if entry != nil {
+		t.Errorf("Expected value is nil, but found %s", val)
+	}
+}
+
 func TestConcurrentAccess(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU()) //test won't work on single-core CPU
 
@@ -162,16 +223,16 @@ func TestConcurrentAccess(t *testing.T) {
 }
 
 func TestFlushingByTimer(t *testing.T) {
-	filename := fmt.Sprintf("%s%d%s", "./store_", time.Now().Unix(), ".gob")
+	filename := fmt.Sprintf("./store_%d.gob", time.Now().Unix())
 
 	s := store.New(
-		store.WithFilename(filename),
+		store.WithCustomFilename(filename),
 	)
 	s.Set("someKey", 123, time.Minute)
 	time.Sleep(time.Second * 3) // magic number to not overlap restore with flushing
 
 	r := store.New(
-		store.WithFilename(filename),
+		store.WithCustomFilename(filename),
 		store.WithRestoreFromFile(filename),
 	)
 	val, err := r.Get("someKey")
@@ -189,10 +250,10 @@ func TestFlushingByTimer(t *testing.T) {
 }
 
 func TestFlushingByUpdatesCount(t *testing.T) {
-	filename := fmt.Sprintf("%s%d%s", "./store_", time.Now().Unix(), ".gob")
+	filename := fmt.Sprintf("./store_%d.gob", time.Now().Unix())
 
 	s := store.New(
-		store.WithFilename(filename),
+		store.WithCustomFilename(filename),
 	)
 	s.Set("key1", 1, time.Hour)
 	s.Set("key2", 2, time.Hour)
@@ -202,7 +263,7 @@ func TestFlushingByUpdatesCount(t *testing.T) {
 	time.Sleep(time.Second * 3) // magic number not to overlap with flushing
 
 	r := store.New(
-		store.WithFilename(filename),
+		store.WithCustomFilename(filename),
 		store.WithRestoreFromFile(filename),
 	)
 	val, err := r.Get("key1")
@@ -228,16 +289,16 @@ func TestFlushingByUpdatesCount(t *testing.T) {
 }
 
 func TestFlushingByStop(t *testing.T) {
-	filename := fmt.Sprintf("%s%d%s", "./store_", time.Now().Unix(), ".gob")
+	filename := fmt.Sprintf("./store_%d.gob", time.Now().Unix())
 
 	s := store.New(
-		store.WithFilename(filename),
+		store.WithCustomFilename(filename),
 	)
 	s.Set("someKey", 123, time.Minute)
 	s.Stop()
 
 	r := store.New(
-		store.WithFilename(filename),
+		store.WithCustomFilename(filename),
 		store.WithRestoreFromFile(filename),
 	)
 	val, err := r.Get("someKey")
