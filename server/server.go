@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"github.com/baratov/golang-playground/store"
 	"github.com/gorilla/mux"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -80,7 +81,7 @@ func GetHandler(w http.ResponseWriter, r *http.Request) {
 func SetHandler(w http.ResponseWriter, r *http.Request) {
 	key := parseKey(r)
 	payload := parseBody(r)
-	s.Set(key, payload.value, payload.ttl)
+	s.Set(key, payload.Value, payload.Ttl)
 
 	withWriter(w).
 		Data(nil).
@@ -90,7 +91,7 @@ func SetHandler(w http.ResponseWriter, r *http.Request) {
 func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 	key := parseKey(r)
 	payload := parseBody(r)
-	err := s.Update(key, payload.value, payload.ttl)
+	err := s.Update(key, payload.Value, payload.Ttl)
 
 	withWriter(w).
 		Data(nil).
@@ -156,23 +157,25 @@ func recoverMiddleware(h http.Handler) http.Handler {
 	})
 }
 
-type payload struct {
-	value interface{}
-	ttl   time.Duration
+type Payload struct {
+	Value interface{}   `json:"value"`
+	Ttl   time.Duration `json:"ttl"`
 }
 
 func parseKey(r *http.Request) string {
 	return mux.Vars(r)["key"]
 }
 
-func parseBody(r *http.Request) payload {
-	decoder := json.NewDecoder(r.Body)
-	var p payload
-	err := decoder.Decode(&p)
-	r.Body.Close()
-
+func parseBody(r *http.Request) Payload {
+	b, err := ioutil.ReadAll(r.Body)
+	defer r.Body.Close()
 	if err != nil {
 		panic(err) // should probably return error to handle as BadRequest
+	}
+	var p Payload
+	err = json.Unmarshal(b, &p)
+	if err != nil {
+		panic(err)
 	}
 	return p
 }
