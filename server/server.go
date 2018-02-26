@@ -29,7 +29,7 @@ func Serve(port string, restore bool) {
 	r := mux.NewRouter()
 	r.Use(recoverMiddleware)
 	r.Use(basicAuthMiddleware)
-	r.HandleFunc("/health", HealthCheckHandler).Methods("GET")
+	r.HandleFunc("/health", HealthCheckHandler).Methods("GET") // healthcheck with basic auth is not ok
 	r.HandleFunc("/api/v1/keys", GetKeysHandler).Methods("GET")
 	r.HandleFunc("/api/v1/keys/{key}", GetHandler).Methods("GET")
 	r.HandleFunc("/api/v1/keys/{key}", SetHandler).Methods("POST")

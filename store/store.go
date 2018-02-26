@@ -20,7 +20,7 @@ const (
 )
 
 type item struct {
-	Value      interface{} // interface{} says nothing?
+	Value      interface{} // interface{} says nothing
 	Expiration time.Time
 }
 
@@ -77,7 +77,7 @@ func WithRestoreFromFile(filename string) setting {
 
 func (s *Store) Stop() {
 	s.stop <- true
-	s.stop <- true // looks strange
+	s.stop <- true // looks strange, change to close(s.stop)
 	s.wg.Wait()
 }
 
@@ -272,7 +272,7 @@ func (s *Store) expire() {
 	}
 }
 
-// calls store.flush by timer or after number of updates updates
+// calls store.flush by timer or after number of updates
 func (s *Store) runFlushing() {
 	defer s.wg.Done()
 

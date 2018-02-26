@@ -5,5 +5,6 @@ import (
 )
 
 func main() {
+	// config values as PORT should be taken from ENV VARs
 	server.Serve("8080", false)
 }
